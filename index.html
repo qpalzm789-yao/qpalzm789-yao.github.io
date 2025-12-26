@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片隐写QQ打包工具（手机版）</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; padding: 15px; max-width: 650px; margin: 0 auto; background: #f5f5f5; }
+        .card { background: white; border-radius: 12px; padding: 22px; margin-bottom: 18px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+        h2 { font-size: 18px; color: #222; margin-bottom: 16px; }
+        h3 { font-size: 16px; color: #333; margin: 12px 0; }
+        input, button { width: 100%; padding: 13px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+        button { background: #2563eb; color: white; border: none; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #1d4ed8; }
+        .file-list { max-height: 180px; overflow-y: auto; border: 1px dashed #ccc; padding: 10px; margin: 10px 0; font-size: 13px; }
+        .file-item { padding: 5px 0; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+        .file-item .remove { color: #ef4444; cursor: pointer; font-size: 12px; }
+        .zip-img-item { padding: 8px 5px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .zip-img-item button { padding: 4px 8px; width: auto; font-size: 12px; border-radius: 4px; }
+        .record-item { padding: 7px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; color: #666; display: flex; justify-content: space-between; align-items: center; }
+        .record-item .del-btn { color: #ef4444; font-size: 12px; cursor: pointer; }
+        .tips { font-size: 12px; color: #888; margin-top: 4px; }
+        .hidden { display: none; }
+        .logout-btn { width: auto; padding: 7px 14px; float: right; font-size: 12px; background: #6b7280; }
+        .logout-btn:hover { background: #4b5563; }
+        .limit-tip { color: #ef4444; font-size: 12px; margin-top: 4px; }
+        .alert { padding: 10px; border-radius: 6px; margin: 8px 0; text-align: center; font-size: 13px; }
+        .alert-error { background: #fee2e2; color: #b91c1c; }
+        .alert-success { background: #dcfce7; color: #16a34a; }
+    </style>
+</head>
+<body>
+    <!-- 登录注册模块 -->
+    <div class="card" id="authCard">
+        <h2>用户登录</h2>
+        <div id="loginAlert" class="alert alert-error hidden"></div>
+        <input type="text" id="loginUser" placeholder="请输入账号">
+        <input type="password" id="loginPwd" placeholder="请输入密码">
+        <button onclick="handleLogin()">登录</button>
+        <div class="tips" style="text-align: center; margin-top: 12px;">
+            没有账号？<span onclick="toggleAuth()" style="color: #2563eb; cursor: pointer;">点击注册</span>
+        </div>
+
+        <h2 class="hidden" id="regTitle">用户注册</h2>
+        <div id="regAlert" class="alert alert-error hidden"></div>
+        <input type="text" id="regUser" placeholder="请输入账号" class="hidden">
+        <input type="password" id="regPwd" placeholder="请输入密码" class="hidden">
+        <button onclick="handleRegister()" class="hidden" id="regBtn">注册</button>
+    </div>
+
+    <!-- 主功能模块 -->
+    <div class="card hidden" id="mainCard">
+        <div style="margin-bottom: 18px;">
+            <span id="currentUser" style="font-weight: 500;"></span>
+            <button class="logout-btn" onclick="handleLogout()">退出登录</button>
+        </div>
+
+        <!-- 1. 图片隐写QQ + 打包ZIP -->
+        <div>
+            <h3>隐写QQ并打包（最多20张）</h3>
+            <input type="text" id="qqInput" placeholder="请输入QQ号（5-12位数字）">
+            <input type="file" id="imgInput" accept="image/*" multiple onchange="handleFileSelect(event)">
+            <div class="limit-tip">最多选择20张图片，超出自动过滤</div>
+            <div class="file-list" id="fileList">请选择图片</div>
+            <button onclick="handlePack()">开始打标并生成ZIP</button>
+            <div id="packTips" class="tips"></div>
+        </div>
+
+        <!-- 2. ZIP包处理：提取单图+解析QQ -->
+        <div style="margin-top: 25px;">
+            <h3>ZIP包提取与解析</h3>
+            <div class="limit-tip">提取图片保存后仍可解析QQ号</div>
+            <input type="file" id="zipInput" accept=".zip" onchange="handleZipSelect(event)">
+            <div class="file-list hidden" id="zipImgList">
+                <div class="tips" style="text-align: center;">ZIP内打标图片列表</div>
+            </div>
+            <div id="zipTips" class="tips"></div>
+        </div>
+
+        <!-- 3. 单图解析 -->
+        <div style="margin-top: 25px;">
+            <h3>解析单张图片QQ号</h3>
+            <input type="file" id="singleImgInput" accept="image/*" onchange="handleSingleImgDecode(event)">
+            <div id="singleDecodeTips" class="tips"></div>
+        </div>
+
+        <!-- 4. 打标记录 -->
+        <div style="margin-top: 25px;">
+            <h3>我的打标记录</h3>
+            <button onclick="loadRecords()" style="background: #6b7280;">刷新记录</button>
+            <div id="recordList" class="file-list">暂无打标记录</div>
+        </div>
+    </div>
+
+    <!-- 引入依赖库 -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+    <script>
+        // 全局配置
+        let currentUser = null;
+        let selectedFiles = [];
+        const MAX_IMG_COUNT = 20; 
+        const MARKER_HEAD = "[[QQ_MARK_START]]";
+        const MARKER_TAIL = "[[QQ_MARK_END]]";
+        let currentZip = null; // 当前加载的ZIP对象
+
+        // 页面初始化
+        window.onload = () => {
+            const savedUser = localStorage.getItem("imgMarkerUser");
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                showMainCard();
+                loadRecords();
+            }
+        };
+
+        // 切换登录注册
+        function toggleAuth() {
+            const authEls = [document.getElementById("regTitle"), document.getElementById("regUser"), document.getElementById("regPwd"), document.getElementById("regBtn")];
+            authEls.forEach(el => el.classList.toggle("hidden"));
+            document.querySelector("#authCard h2:first-child").classList.toggle("hidden");
+            document.getElementById("loginAlert").classList.add("hidden");
+            document.getElementById("regAlert").classList.add("hidden");
+        }
+
+        // 注册功能
+        function handleRegister() {
+            const username = document.getElementById("regUser").value.trim();
+            const password = document.getElementById("regPwd").value.trim();
+            const regAlert = document.getElementById("regAlert");
+
+            if (!username || !password) {
+                regAlert.textContent = "账号和密码不能为空！";
+                regAlert.classList.remove("hidden");
+                return;
+            }
+
+            const allUsers = JSON.parse(localStorage.getItem("imgMarkerAllUsers") || "[]");
+            if (allUsers.some(u => u.username === username)) {
+                regAlert.textContent = "账号已存在！";
+                regAlert.classList.remove("hidden");
+                return;
+            }
+
+            allUsers.push({ username, password });
+            localStorage.setItem("imgMarkerAllUsers", JSON.stringify(allUsers));
+            alert("注册成功！请登录");
+            toggleAuth();
+        }
+
+        // 登录功能
+        function handleLogin() {
+            const username = document.getElementById("loginUser").value.trim();
+            const password = document.getElementById("loginPwd").value.trim();
+            const loginAlert = document.getElementById("loginAlert");
+
+            if (!username || !password) {
+                loginAlert.textContent = "账号和密码不能为空！";
+                loginAlert.classList.remove("hidden");
+                return;
+            }
+
+            const allUsers = JSON.parse(localStorage.getItem("imgMarkerAllUsers") || "[]");
+            const user = allUsers.find(u => u.username === username && u.password === password);
+            
+            if (!user) {
+                loginAlert.textContent = "账号或密码错误！";
+                loginAlert.classList.remove("hidden");
+                return;
+            }
+
+            currentUser = user;
+            localStorage.setItem("imgMarkerUser", JSON.stringify(user));
+            showMainCard();
+            loadRecords();
+        }
+
+        // 退出登录
+        function handleLogout() {
+            localStorage.removeItem("imgMarkerUser");
+            currentUser = null;
+            selectedFiles = [];
+            document.getElementById("fileList").innerHTML = "请选择图片";
+            document.getElementById("mainCard").classList.add("hidden");
+            document.getElementById("authCard").classList.remove("hidden");
+        }
+
+        // 显示主界面
+        function showMainCard() {
+            document.getElementById("authCard").classList.add("hidden");
+            document.getElementById("mainCard").classList.remove("hidden");
+            document.getElementById("currentUser").textContent = `当前账号：${currentUser.username}`;
+        }
+
+        // 选择打标图片
+        function handleFileSelect(e) {
+            let newFiles = Array.from(e.target.files);
+            const combinedFiles = [...selectedFiles, ...newFiles].filter((file, index, self) => 
+                index === self.findIndex(f => f.name === file.name && f.size === file.size)
+            ).slice(0, MAX_IMG_COUNT);
+
+            selectedFiles = combinedFiles;
+            const fileListEl = document.getElementById("fileList");
+            fileListEl.innerHTML = selectedFiles.length === 0 
+                ? "请选择图片" 
+                : selectedFiles.map((f, index) => `
+                    <div class="file-item">
+                        <span>${f.name} (${formatSize(f.size)})</span>
+                        <span class="remove" onclick="removeFile(${index})">移除</span>
+                    </div>
+                `).join("");
+        }
+
+        // 移除单张打标图片
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            handleFileSelect({ target: { files: [] } });
+        }
+
+        // 打标并生成ZIP
+        async function handlePack() {
+            const qq = document.getElementById("qqInput").value.trim();
+            const packTips = document.getElementById("packTips");
+
+            if (!/^\d{5,12}$/.test(qq)) {
+                packTips.textContent = "❌ QQ号必须是5-12位数字！";
+                return;
+            }
+            if (selectedFiles.length === 0) {
+                packTips.textContent = "❌ 请先选择至少一张图片！";
+                return;
+            }
+
+            packTips.textContent = "处理中...请稍候";
+
+            try {
+                const zip = new JSZip();
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
+                    const ext = file.name.split(".").pop() || "png";
+                    const fileName = `marked_${Date.now()}_${i+1}.${ext}`;
+                    
+                    // 读取图片二进制，写入QQ标记
+                    const buffer = await readFileAsArrayBuffer(file);
+                    const markStr = `${MARKER_HEAD}${qq}${MARKER_TAIL}`;
+                    const markBuffer = new TextEncoder().encode(markStr);
+                    const combinedBuffer = new Uint8Array(buffer.byteLength + markBuffer.byteLength);
+                    combinedBuffer.set(new Uint8Array(buffer), 0);
+                    combinedBuffer.set(markBuffer, buffer.byteLength);
+
+                    zip.file(fileName, combinedBuffer, { binary: true });
+                }
+
+                // 生成ZIP并下载到手机
+                const zipBlob = await zip.generateAsync({ 
+                    type: "blob", 
+                    compression: "DEFLATE",
+                    compressionOptions: { level: 6 }
+                });
+                const downloadFileName = `QQ_${qq}_打标图片_${Date.now()}.zip`;
+                saveAs(zipBlob, downloadFileName);
+
+                // 保存记录
+                saveRecord(qq, selectedFiles.length);
+                packTips.textContent = `✅ 打包成功！共${selectedFiles.length}张图片，已下载`;
+                loadRecords();
+                selectedFiles = [];
+                document.getElementById("fileList").innerHTML = "请选择图片";
+            } catch (err) {
+                packTips.textContent = `❌ 处理失败：${err.message}`;
+                console.error("打包失败原因：", err);
+            }
+        }
+
+        // ========== 核心新增：加载ZIP并展示内部图片列表 ==========
+        async function handleZipSelect(e) {
+            const zipFile = e.target.files[0];
+            const zipImgListEl = document.getElementById("zipImgList");
+            const zipTips = document.getElementById("zipTips");
+            zipTips.textContent = "";
+
+            if (!zipFile) {
+                zipImgListEl.classList.add("hidden");
+                return;
+            }
+
+            zipTips.textContent = "正在解析ZIP包...";
+            try {
+                currentZip = await JSZip.loadAsync(zipFile);
+                // 筛选出图片文件
+                const imgFileNames = Object.keys(currentZip.files).filter(name => {
+                    return name.endsWith(".jpg") || name.endsWith(".png") || name.endsWith(".jpeg");
+                });
+
+                if (imgFileNames.length === 0) {
+                    zipImgListEl.innerHTML = "<div class='alert alert-error'>ZIP内无图片文件</div>";
+                    zipImgListEl.classList.remove("hidden");
+                    zipTips.textContent = "";
+                    return;
+                }
+
+                // 渲染ZIP内图片列表（带提取、解析按钮）
+                zipImgListEl.innerHTML = imgFileNames.map(name => `
+                    <div class="zip-img-item">
+                        <span>${name}</span>
+                        <div>
+                            <button onclick="extractSingleImg('${name}')">提取保存</button>
+                            <button onclick="decodeZipSingleImg('${name}')">解析QQ</button>
+                        </div>
+                    </div>
+                `).join("");
+                zipImgListEl.classList.remove("hidden");
+                zipTips.textContent = `✅ 解析完成，共${imgFileNames.length}张图片`;
+            } catch (err) {
+                zipImgListEl.innerHTML = `<div class='alert alert-error'>解析失败：${err.message}</div>`;
+                zipImgListEl.classList.remove("hidden");
+                zipTips.textContent = "";
+            }
+        }
+
+        // ========== 核心新增：从ZIP提取单张图片并保存到手机 ==========
+        async function extractSingleImg(fileName) {
+            if (!currentZip) return;
+            const zipTips = document.getElementById("zipTips");
+            zipTips.textContent = `正在提取${fileName}...`;
+
+            try {
+                // 读取ZIP内图片的二进制数据
+                const imgUint8 = await currentZip.files[fileName].async("uint8array");
+                // 转为Blob对象
+                const imgBlob = new Blob([imgUint8], { type: getImgType(fileName) });
+                // 保存到手机
+                saveAs(imgBlob, fileName);
+                zipTips.textContent = `✅ ${fileName} 已保存到手机相册`;
+            } catch (err) {
+                zipTips.textContent = `❌ 提取失败：${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // ========== 核心新增：解析ZIP内单张图片的QQ号 ==========
+        async function decodeZipSingleImg(fileName) {
+            if (!currentZip) return;
+            const zipTips = document.getElementById("zipTips");
+            zipTips.textContent = `正在解析${fileName}的QQ号...`;
+
+            try {
+                const imgUint8 = await currentZip.files[fileName].async("uint8array");
+                const qq = extractQQFromBuffer(imgUint8);
+                if (qq) {
+                    zipTips.textContent = `✅ 解析成功！${fileName}的QQ号：${qq}`;
+                } else {
+                    zipTips.textContent = `❌ ${fileName}未检测到QQ标记`;
+                }
+            } catch (err) {
+                zipTips.textContent = `❌ 解析失败：${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // ========== 核心新增：解析手机本地单张图片（保存后仍可解析） ==========
+        async function handleSingleImgDecode(e) {
+            const imgFile = e.target.files[0];
+            const tips = document.getElementById("singleDecodeTips");
+            if (!imgFile) {
+                tips.textContent = "";
+                return;
+            }
+
+            tips.textContent = "正在解析图片...";
+            try {
+                const imgUint8 = await readFileAsUint8Array(imgFile);
+                const qq = extractQQFromBuffer(imgUint8);
+                if (qq) {
+                    tips.textContent = `✅ 解析成功！该图片的QQ号：${qq}`;
+                } else {
+                    tips.textContent = "❌ 该图片未检测到QQ标记";
+                }
+            } catch (err) {
+                tips.textContent = `❌ 解析失败：${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // 从二进制数据提取QQ号
+        function extractQQFromBuffer(uint8Array) {
+            const text = new TextDecoder().decode(uint8Array);
+            const headIndex = text.lastIndexOf(MARKER_HEAD);
+            const tailIndex = text.lastIndexOf(MARKER_TAIL);
+            if (headIndex !== -1 && tailIndex !== -1 && headIndex < tailIndex) {
+                return text.slice(headIndex + MARKER_HEAD.length, tailIndex);
+            }
+            return null;
+        }
+
+        // 获取图片的MIME类型
+        function getImgType(fileName) {
+            if (fileName.endsWith(".png")) return "image/png";
+            if (fileName.endsWith(".jpeg")) return "image/jpeg";
+            return "image/jpg";
+        }
+
+        // 保存打标记录
+        function saveRecord(qq, count) {
+            const recordKey = `imgMarkerRecords_${currentUser.username}`;
+            const records = JSON.parse(localStorage.getItem(recordKey) || "[]");
+            records.unshift({ id: Date.now(), qq, count, time: new Date().toLocaleString() });
+            localStorage.setItem(recordKey, JSON.stringify(records));
+        }
+
+        // 加载打标记录
+        function loadRecords() {
+            const recordKey = `imgMarkerRecords_${currentUser.username}`;
+            const records = JSON.parse(localStorage.getItem(recordKey) || "[]");
+            const recordListEl = document.getElementById("recordList");
+            
+            if (records.length === 0) {
+                recordListEl.innerHTML = "暂无打标记录";
+                return;
+            }
+
+            recordListEl.innerHTML = records.map((r, index) => `
+                <div class="record-item">
+                    <span>时间：${r.time} | QQ：${r.qq} | 图片数：${r.count}</span>
+                    <span class="del-btn" onclick="deleteRecord(${index})">删除</span>
+                </div>
+            `).join("");
+        }
+
+        // 删除单条记录
+        function deleteRecord(index) {
+            const recordKey = `imgMarkerRecords_${currentUser.username}`;
+            const records = JSON.parse(localStorage.getItem(recordKey) || "[]");
+            records.splice(index, 1);
+            localStorage.setItem(recordKey, JSON.stringify(records));
+            loadRecords();
+        }
+
+        // 工具函数：读取文件为ArrayBuffer
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 工具函数：读取文件为Uint8Array
+        function readFileAsUint8Array(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(new Uint8Array(e.target.result));
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 格式化文件大小
+        function formatSize(bytes) {
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+            return `${(bytes / 1048576).toFixed(1)} MB`;
+        }
+    </script>
+</body>
+</html>
